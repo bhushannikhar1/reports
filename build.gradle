@@ -56,11 +56,16 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
-
+//
+//def isMac = System.getProperty('os.name').toLowerCase().contains('mac')
+//def stagingInputDir = isMac ? '/tmp/jpackage-reports-input' : layout.buildDirectory.dir('jpackage-input').get().asFile.absolutePath
+//def stagingOutDir = isMac ? '/tmp/jpackage-reports-out' : layout.buildDirectory.dir('jpackage-out').get().asFile.absolutePath
+//def jpackageTool = "${javaToolchains.launcherFor(java.toolchain).get().metadata.installationPath}/bin/jpackage"
 def isMac = System.getProperty('os.name').toLowerCase().contains('mac')
-def stagingInputDir = isMac ? '/tmp/jpackage-reports-input' : layout.buildDirectory.dir('jpackage-input').get().asFile.absolutePath
-def stagingOutDir = isMac ? '/tmp/jpackage-reports-out' : layout.buildDirectory.dir('jpackage-out').get().asFile.absolutePath
+def stagingInputDir = isMac ? '/tmp/jpackage-reports-input' : layout.buildDirectory.dir('jpackage-staging-input').get().asFile.absolutePath
+def stagingOutDir = isMac ? '/tmp/jpackage-reports-out' : layout.buildDirectory.dir('jpackage-staging-out').get().asFile.absolutePath
 def jpackageTool = "${javaToolchains.launcherFor(java.toolchain).get().metadata.installationPath}/bin/jpackage"
+
 
 tasks.register('prepareJpackageInput', Copy) {
 	dependsOn 'jar'
