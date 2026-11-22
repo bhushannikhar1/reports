@@ -23,11 +23,17 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Windows App Image
-        run: .\gradlew.bat collectPackage
+        run: .\gradlew.bat collectPackage --info
+
+      - name: Prepare Artifact Folder
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-windows
+          Copy-Item -Path "build\jpackage-out\*" -Destination "dist-windows\" -Recurse -Force
+          Get-ChildItem -Path "dist-windows" -Recurse
 
       - name: Upload Windows App Zip
         uses: actions/upload-artifact@v4
         with:
           name: IndustrialReports-Windows
-          path: build/jpackage-out
+          path: dist-windows
           if-no-files-found: error
