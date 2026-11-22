@@ -19,6 +19,9 @@ jobs:
           distribution: 'corretto'
           java-version: '25'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Build Windows App Image
         run: .\gradlew.bat collectPackage
 
@@ -26,4 +29,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: IndustrialReports-Windows
-          path: build/jpackage-out/IndustrialReports/
+          path: build/jpackage-out
+          if-no-files-found: error
