@@ -1,0 +1,120 @@
+plugins {
+	id 'java'
+	id 'application' // 1. Add the application plugin
+	id 'org.springframework.boot' version '4.1.2'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+group = 'com.syntropic.industrial'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+javafx {
+	version = '25'
+	modules = ['javafx.controls', 'javafx.web']
+}
+
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+//	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+//	implementation 'org.springframework.boot:spring-boot-starter-validation'
+//	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+//	compileOnly 'org.projectlombok:lombok'
+//	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+//	annotationProcessor 'org.projectlombok:lombok'
+//	testImplementation 'org.springframework.boot:spring-boot-starter-jdbc-test'
+//	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+//	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+//	testCompileOnly 'org.projectlombok:lombok'
+//	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+//	testAnnotationProcessor 'org.projectlombok:lombok'
+//
+	//added
+
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	compileOnly 'org.projectlombok:lombok'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-jdbc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+	runtimeOnly 'com.h2database:h2'
+	runtimeOnly 'com.microsoft.sqlserver:mssql-jdbc'
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'org.webjars.npm:flatpickr:4.6.13'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+
+
+//JPACKAGE
+
+
+
+application {
+	mainClass = 'com.syntropic.industrial.reports.ReportsApplication'
+}
+
+// 2. Task to copy all runtime dependencies (including JavaFX native jars) into one folder
+tasks.register('copyDependencies', Copy) {
+	from configurations.runtimeClasspath
+	into layout.buildDirectory.dir('jpackage-input/libs')
+}
+
+// 3. Task to package everything into a native executable
+tasks.register('packageApp', Exec) {
+	dependsOn 'bootJar', 'copyDependencies'
+
+	doFirst {
+		delete layout.buildDirectory.dir('jpackage-out')
+	}
+
+	def jpackageTool = "${javaToolchains.launcherFor(java.toolchain).get().metadata.installationPath}/bin/jpackage"
+	def libsDir = layout.buildDirectory.dir('jpackage-input/libs').get().asFile.absolutePath
+	def jarFile = tasks.named('bootJar').get().archiveFile.get().asFile
+	def outDir = layout.buildDirectory.dir('jpackage-out').get().asFile.absolutePath
+
+	// Filter only the javafx jars for the --module-path
+	def fxJars = fileTree(libsDir).matching {
+		include 'javafx-*.jar'
+	}.files.collect { it.absolutePath }.join(File.pathSeparator)
+
+	commandLine jpackageTool,
+			'--name', 'IndustrialReports',
+			'--app-version', '1.0.0',
+			'--input', libsDir,
+			'--main-jar', jarFile.name,
+			'--main-class', 'com.syntropic.industrial.reports.ReportsApplication',
+			'--type', 'app-image', // Creates a portable folder with IndustrialReports.exe (change to 'exe' for an installer)
+			'--dest', outDir,
+			'--java-options', "--module-path \$APPDIR --add-modules javafx.controls,javafx.web",
+			'--java-options', '-Dprism.order=sw',
+			'--java-options', '-Dfile.encoding=UTF-8'
+}
+
+
+tasks.register('copyDependencies', Copy) {
+	dependsOn 'bootJar'
+	from configurations.runtimeClasspath
+	from tasks.named('bootJar')
+	into layout.buildDirectory.dir('jpackage-input/libs')
+}

@@ -1,0 +1,104 @@
+plugins {
+	id 'java'
+	id 'application'
+	id 'org.springframework.boot' version '4.1.2'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+group = 'com.syntropic.industrial'
+version = '0.0.1-SNAPSHOT'
+
+application {
+	mainClass = 'com.syntropic.industrial.reports.ReportsApplication'
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+javafx {
+	version = '25'
+	modules = ['javafx.controls', 'javafx.web']
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'org.webjars.npm:flatpickr:4.6.13'
+
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	// Keep devtools disabled so it doesn't interfere with JavaFX's classloader
+	// developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+	runtimeOnly 'com.h2database:h2'
+	runtimeOnly 'com.microsoft.sqlserver:mssql-jdbc'
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-jdbc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+def isMac = System.getProperty('os.name').toLowerCase().contains('mac')
+def stagingInputDir = isMac ? '/tmp/jpackage-reports-input' : layout.buildDirectory.dir('jpackage-input').get().asFile.absolutePath
+def stagingOutDir = isMac ? '/tmp/jpackage-reports-out' : layout.buildDirectory.dir('jpackage-out').get().asFile.absolutePath
+def jpackageTool = "${javaToolchains.launcherFor(java.toolchain).get().metadata.installationPath}/bin/jpackage"
+
+tasks.register('prepareJpackageInput', Copy) {
+	dependsOn 'jar'
+	doFirst {
+		file(stagingInputDir).deleteDir()
+	}
+	into stagingInputDir
+	from(tasks.named('jar'))
+	from(configurations.runtimeClasspath)
+}
+
+tasks.register('packageApp', Exec) {
+	dependsOn 'prepareJpackageInput'
+
+	doFirst {
+		file(stagingOutDir).deleteDir()
+	}
+
+	def plainJarName = tasks.named('jar').get().archiveFile.get().asFile.name
+
+	commandLine jpackageTool,
+			'--name', 'IndustrialReports',
+			'--app-version', '1.0.0',
+			'--input', stagingInputDir,
+			'--main-jar', plainJarName,
+			'--main-class', 'com.syntropic.industrial.reports.ReportsApplication',
+			'--type', 'app-image',
+			'--dest', stagingOutDir,
+			'--java-options', '--module-path $APPDIR --add-modules javafx.controls,javafx.web',
+			'--java-options', '-Dprism.order=sw',
+			'--java-options', '-Dfile.encoding=UTF-8'
+}
+
+tasks.register('collectPackage', Copy) {
+	dependsOn 'packageApp'
+	doFirst {
+		delete layout.buildDirectory.dir('jpackage-out')
+	}
+	from stagingOutDir
+	into layout.buildDirectory.dir('jpackage-out')
+}
