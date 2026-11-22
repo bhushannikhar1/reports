@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html xmlns:th="http://thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Test SQL Server</title>
+    <style>
+        body { font-family: sans-serif; background: #f1f5f9; padding: 20px; color: #1e293b; }
+        .box { max-width: 1100px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .row { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+        input, textarea { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; box-sizing: border-box; }
+        button { padding: 9px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: #fff; white-space: nowrap; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .blue { background: #0284c7; } .green { background: #16a34a; } .orange { background: #d97706; } .gray { background: #64748b; }
+        .msg { padding: 10px; border-radius: 4px; margin: 10px 0; display: none; }
+        .ok { display: block; background: #dcfce7; color: #166534; }
+        .err { display: block; background: #fee2e2; color: #991b1b; }
+        .tbl-box { overflow: auto; max-height: 400px; margin-top: 15px; border: 1px solid #cbd5e1; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #1e3a5f; color: #fff; padding: 8px; text-align: left; position: sticky; top: 0; }
+        td { padding: 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    </style>
+</head>
+<body>
+<div class="box">
+    <h3>SQL Server Connection &amp; Query Tester (<span id="badge">DISCONNECTED</span>)</h3>
+
+    <div class="row">
+        <input id="connStr" value="jdbc:sqlserver://localhost:1433;databaseName=master;encrypt=true;trustServerCertificate=true;" placeholder="JDBC Connection String" />
+    </div>
+    <div class="row">
+        <input id="user" placeholder="Username (optional if in string)" />
+        <input id="pass" type="password" placeholder="Password (optional if in string)" />
+        <button id="btnConn" class="blue" onclick="connectDb()">Connect</button>
+        <button id="btnEdit" class="orange" onclick="resetForm(false)" style="display:none;">Change Details</button>
+        <button class="gray" onclick="resetForm(true)">New Details</button>
+    </div>
+    <div id="connMsg" class="msg"></div>
+
+    <hr />
+
+    <div class="row">
+        <textarea id="sql" rows="3">SELECT TOP 20 name, create_date FROM sys.tables</textarea>
+        <button id="btnRun" class="green" onclick="runQuery()" disabled>Execute Query</button>
+    </div>
+    <div id="queryMsg" class="msg"></div>
+
+    <div id="tblBox" class="tbl-box" style="display:none;">
+        <table>
+            <thead id="tHead"></thead>
+            <tbody id="tBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let connected = false;
+
+    function setLocked(lock) {
+        ['connStr', 'user', 'pass', 'btnConn'].forEach(id => document.getElementById(id).disabled = lock);
+        document.getElementById('btnEdit').style.display = lock ? 'inline-block' : 'none';
+        document.getElementById('btnRun').disabled = !lock;
+        document.getElementById('badge').textContent = lock ? 'CONNECTED' : 'DISCONNECTED';
+    }
+
+    function resetForm(clearValues) {
+        connected = false;
+        setLocked(false);
+        if (clearValues) {
+            document.getElementById('connStr').value = 'jdbc:sqlserver://192.168.1.100:1433;databaseName=ScadaDB;encrypt=true;trustServerCertificate=true;';
+            document.getElementById('user').value = '';
+            document.getElementById('pass').value = '';
+            showMsg('connMsg', 'Enter new connection details above.', true);
+        }
+    }
+
+    function showMsg(id, text, isOk) {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.className = 'msg ' + (isOk ? 'ok' : 'err');
+    }
+
+    async function connectDb() {
+        showMsg('connMsg', 'Connecting...', true);
+        const res = await fetch('/api/db/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                connectionString: document.getElementById('connStr').value,
+                username: document.getElementById('user').value,
+                password: document.getElementById('pass').value
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            setLocked(false);
+            showMsg('connMsg', data.message || 'Connection failed. Edit details and retry.', false);
+            return;
+        }
+        connected = true;
+        setLocked(true);
+        showMsg('connMsg', data.message, true);
+    }
+
+    async function runQuery() {
+        if (!connected) return;
+        showMsg('queryMsg', 'Running query...', true);
+        const res = await fetch('/api/db/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                connectionString: document.getElementById('connStr').value,
+                username: document.getElementById('user').value,
+                password: document.getElementById('pass').value,
+                query: document.getElementById('sql').value
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            showMsg('queryMsg', data.message || 'Query error.', false);
+            return;
+        }
+        showMsg('queryMsg', 'Fetched ' + data.rows.length + ' row(s).', true);
+        const tHead = document.getElementById('tHead');
+        const tBody = document.getElementById('tBody');
+        tHead.innerHTML = '';
+        tBody.innerHTML = '';
+        if (data.columns.length > 0) {
+            tHead.innerHTML = '<tr>' + data.columns.map(c => '<th>' + c + '</th>').join('') + '</tr>';
+            tBody.innerHTML = data.rows.map(r => '<tr>' + data.columns.map(c => '<td>' + (r[c] ?? '') + '</td>').join('') + '</tr>').join('');
+            document.getElementById('tblBox').style.display = 'block';
+        } else {
+            document.getElementById('tblBox').style.display = 'none';
+        }
+    }
+</script>
+</body>
+</html>

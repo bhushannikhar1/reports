@@ -51,6 +51,14 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
+
+	implementation 'io.github.openhtmltopdf:openhtmltopdf-core:1.1.22'
+	implementation 'io.github.openhtmltopdf:openhtmltopdf-pdfbox:1.1.22'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+
+
+//	local
+	runtimeOnly 'com.h2database:h2'
 }
 
 tasks.named('test') {
@@ -66,6 +74,11 @@ def stagingInputDir = isMac ? '/tmp/jpackage-reports-input' : layout.buildDirect
 def stagingOutDir = isMac ? '/tmp/jpackage-reports-out' : layout.buildDirectory.dir('jpackage-staging-out').get().asFile.absolutePath
 def jpackageTool = "${javaToolchains.launcherFor(java.toolchain).get().metadata.installationPath}/bin/jpackage"
 
+//for mac. Disable for git runner of windows
+tasks.named('jar') {
+	enabled = true
+}
+//till here
 
 tasks.register('prepareJpackageInput', Copy) {
 	dependsOn 'jar'
