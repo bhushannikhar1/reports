@@ -3,6 +3,7 @@ package com.syntropic.industrial.reports.launcher;
 import com.syntropic.industrial.reports.ReportsApplication;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.concurrent.Worker;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.layout.StackPane;
@@ -42,6 +43,13 @@ public class DesktopApplication extends Application {
         StackPane root = new StackPane(webView);
         Scene scene = new Scene(root, 1280, 800);
 
+        webView.getEngine().getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == Worker.State.FAILED) {
+                Throwable ex = webView.getEngine().getLoadWorker().getException();
+                root.getChildren().setAll(new Label("WebView Failed to Load: " + (ex != null ? ex.getMessage() : "Unknown error")));
+            }
+        });
+
         stage.setTitle("Reports");
         stage.setScene(scene);
         stage.setMinWidth(1000);
@@ -65,8 +73,26 @@ public class DesktopApplication extends Application {
                     return;
                 }
 
-                webView.getEngine().load(APP_URL);
+//                webView.getEngine().load(APP_URL);
+                // Read the actual port Tomcat started on (whether 0/random or custom like 9095)
+                String activePort = context.getEnvironment().getProperty("local.server.port");
+                if (activePort == null) {
+                    root.getChildren().setAll(new Label("Web server did not start (local.server.port is null)."));
+                    return;
+                }
+
+                String dynamicUrl = "http://127.0.0.1:" + activePort + "/";
+                webView.getEngine().load(dynamicUrl);
             });
+        });
+
+
+        // Add this right after: WebView webView = new WebView();
+        webView.getEngine().getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == javafx.concurrent.Worker.State.FAILED) {
+                Throwable ex = webView.getEngine().getLoadWorker().getException();
+                root.getChildren().setAll(new Label("WebView Failed to Load: " + (ex != null ? ex.getMessage() : "Unknown error")));
+            }
         });
     }
 
