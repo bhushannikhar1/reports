@@ -3,6 +3,7 @@ package com.syntropic.industrial.reports.alarmReport;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
@@ -15,8 +16,8 @@ import java.util.List;
 @Service
 public class WinccAlarmReportService {
 
-    private final JdbcTemplate jdbcTemplate;
-    private final TemplateEngine templateEngine;
+    private  JdbcTemplate jdbcTemplate;
+    private  TemplateEngine templateEngine;
 
     @Value("${appmode:sqlserver}")
     private String appMode;
@@ -30,15 +31,37 @@ public class WinccAlarmReportService {
         return "h2".equalsIgnoreCase(appMode != null ? appMode.trim() : "");
     }
 
+    private JdbcTemplate resolveJdbcTemplate(AlarmReportRequest request) {
+        if (isH2Mode()) {
+            return this.jdbcTemplate;
+        }
+        if (request.getConnectionString() != null && !request.getConnectionString().isBlank()) {
+            DriverManagerDataSource ds = new DriverManagerDataSource();
+            ds.setUrl(request.getConnectionString().trim());
+            if (request.getDbUsername() != null && !request.getDbUsername().isBlank()) {
+                ds.setUsername(request.getDbUsername().trim());
+            }
+            if (request.getDbPassword() != null) {
+                ds.setPassword(request.getDbPassword());
+            }
+            return new JdbcTemplate(ds);
+        }
+        return this.jdbcTemplate;
+    }
+
     public byte[] generateAlarmPdf(AlarmReportRequest request) throws Exception {
+        // Use the dynamic JdbcTemplate for this specific report execution!
+        JdbcTemplate activeJdbc = resolveJdbcTemplate(request);
+
         DateTimeFormatter sqlFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:00");
         String frmDate = request.getFromDateTime().format(sqlFormatter);
         String toDate = request.getToDateTime().format(sqlFormatter);
         String group = request.resolveGroup();
 
         // 1. Fetch Username based on appmode
-        String username = fetchActiveUsername();
+        String username = fetchActiveUsername(activeJdbc);
 
+        this.jdbcTemplate = activeJdbc;
         // 2. Get database names based on appmode
         String dbListSql = isH2Mode()
                 ? "SELECT name FROM sys.sysdatabases ORDER BY name"
@@ -124,12 +147,12 @@ public class WinccAlarmReportService {
             """.formatted(dbName);
     }
 
-    private String fetchActiveUsername() {
+    private String fetchActiveUsername(JdbcTemplate activeJdbcTemplate) {
         String userSql = isH2Mode()
                 ? "SELECT User_NM FROM dbo.User_NM LIMIT 1"
                 : "SELECT TOP 1 User_NM FROM [Database].[dbo].[User_NM]";
         try {
-            List<String> users = jdbcTemplate.queryForList(userSql, String.class);
+            List<String> users = activeJdbcTemplate.queryForList(userSql, String.class);
             return users.isEmpty() ? "Operator" : users.get(0);
         } catch (Exception e) {
             return "Operator";

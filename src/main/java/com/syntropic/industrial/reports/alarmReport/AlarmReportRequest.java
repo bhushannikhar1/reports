@@ -28,6 +28,10 @@ public class AlarmReportRequest {
     @NotBlank(message = "Please Select Area")
     private String area;
 
+    private String connectionString;
+    private String dbUsername;
+    private String dbPassword;
+
     public LocalDateTime getFromDateTime() {
         return LocalDateTime.of(fromDate, fromTime.withSecond(0));
     }
@@ -48,6 +52,30 @@ public class AlarmReportRequest {
             return "LINE1";
         }
         return "Group";
+    }
+
+    public String getConnectionString() {
+        return connectionString;
+    }
+
+    public void setConnectionString(String connectionString) {
+        this.connectionString = connectionString;
+    }
+
+    public String getDbUsername() {
+        return dbUsername;
+    }
+
+    public void setDbUsername(String dbUsername) {
+        this.dbUsername = dbUsername;
+    }
+
+    public String getDbPassword() {
+        return dbPassword;
+    }
+
+    public void setDbPassword(String dbPassword) {
+        this.dbPassword = dbPassword;
     }
 
     // Getters & Setters

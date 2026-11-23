@@ -33,6 +33,10 @@ public class ApplicationController {
     public String testDatabasePage() {
         return "TestDatabase";
     }
+    @GetMapping("/test-database2")
+    public String testDatabase2Page() {
+        return "TestDatabase2";
+    }
 
     public record DbRequest(
             String connectionString,

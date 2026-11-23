@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html xmlns:th="http://thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Test SQL Server &amp; Alarm Report</title>
+    <style>
+        body { font-family: sans-serif; background: #f1f5f9; padding: 20px; color: #1e293b; }
+        .box { max-width: 1100px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .row { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+        label { min-width: 95px; font-weight: bold; font-size: 14px; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; box-sizing: border-box; }
+        input[type="checkbox"] { width: auto; }
+        button { padding: 9px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: #fff; white-space: nowrap; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .blue { background: #0284c7; } .green { background: #16a34a; } .orange { background: #d97706; } .gray { background: #64748b; }
+        .msg { padding: 10px; border-radius: 4px; margin: 10px 0; display: none; }
+        .ok { display: block; background: #dcfce7; color: #166534; }
+        .err { display: block; background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+<div class="box">
+    <h3>SQL Server Connection (<span id="badge">DISCONNECTED</span>)</h3>
+
+    <div class="row">
+        <input id="connStr" value="jdbc:sqlserver://INSKMSRPRD-08\WINCC;integratedSecurity=true;authenticationScheme=NTLM;domain=INSKMSRPRD-08;trustServerCertificate=true;" placeholder="JDBC Connection String" />
+    </div>
+    <div class="row">
+        <input id="user" placeholder="Username (e.g. DOMAIN\User or sa)" />
+        <input id="pass" type="password" placeholder="Password" />
+    </div>
+    <div class="row" style="justify-content: space-between;">
+        <label style="min-width: auto; font-weight: normal; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="winAuth" checked /> Use Windows Login Credentials (NTLM)
+        </label>
+        <div style="display: flex; gap: 8px;">
+            <button id="btnConn" class="blue" onclick="connectDb()">Connect</button>
+            <button id="btnEdit" class="orange" onclick="resetForm(false)" style="display:none;">Change Details</button>
+            <button class="gray" onclick="resetForm(true)">New Details</button>
+        </div>
+    </div>
+    <div id="connMsg" class="msg"></div>
+
+    <hr />
+
+    <h3>WinCC Alarm Log Report</h3>
+    <!-- Submits directly to AlarmReportController without needing th:object="${reportRequest}" -->
+    <form id="alarmForm" action="/alert-report/generate" method="post" target="_blank">
+        <input type="hidden" id="hiddenConnStr" name="connectionString" />
+        <input type="hidden" id="hiddenUser" name="dbUsername" />
+        <input type="hidden" id="hiddenPass" name="dbPassword" />
+
+        <div class="row">
+            <label>From Date:</label>
+            <input type="date" name="fromDate" required />
+            <input type="time" name="fromTime" required />
+        </div>
+
+        <div class="row">
+            <label>To Date:</label>
+            <input type="date" name="toDate" required />
+            <input type="time" name="toTime" required />
+        </div>
+
+        <div class="row">
+            <label>Area:</label>
+            <select name="area" required>
+                <option value="">-- Please Select Area --</option>
+                <option value="LINE1 MFG">LINE1 MFG</option>
+                <option value="LINE1 SFMT">LINE1 SFMT</option>
+                <option value="LINE1 Sonicator">LINE1 Sonicator</option>
+                <option value="LINE1 NETWORK">LINE1 NETWORK</option>
+                <option value="Group">Group</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <button id="btnRun" type="submit" class="green" disabled>Generate Alarm Report</button>
+            <button type="button" class="gray" onclick="resetToNow()">Clear</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    let connected = false;
+
+    function buildEffectiveConnection() {
+        let rawUrl = document.getElementById('connStr').value.trim();
+        let rawUser = document.getElementById('user').value.trim();
+        let rawPass = document.getElementById('pass').value;
+        const isWinAuth = document.getElementById('winAuth').checked;
+
+        if (isWinAuth && rawUser) {
+            if (!rawUrl.endsWith(';')) rawUrl += ';';
+            if (!/integratedSecurity=/i.test(rawUrl)) rawUrl += 'integratedSecurity=true;';
+            if (!/authenticationScheme=/i.test(rawUrl)) rawUrl += 'authenticationScheme=NTLM;';
+
+            if (rawUser.includes('\\')) {
+                const parts = rawUser.split('\\');
+                const domain = parts[0];
+                rawUser = parts[1];
+                if (!/domain=/i.test(rawUrl)) rawUrl += `domain=${domain};`;
+            }
+        }
+        return { connectionString: rawUrl, username: rawUser, password: rawPass };
+    }
+
+    function setLocked(lock) {
+        ['connStr', 'user', 'pass', 'winAuth', 'btnConn'].forEach(id => document.getElementById(id).disabled = lock);
+        document.getElementById('btnEdit').style.display = lock ? 'inline-block' : 'none';
+        document.getElementById('btnRun').disabled = !lock;
+        document.getElementById('badge').textContent = lock ? 'CONNECTED' : 'DISCONNECTED';
+
+        if (lock) {
+            const effective = buildEffectiveConnection();
+            document.getElementById('hiddenConnStr').value = effective.connectionString;
+            document.getElementById('hiddenUser').value = effective.username;
+            document.getElementById('hiddenPass').value = effective.password;
+        }
+    }
+
+    function resetForm(clearValues) {
+        connected = false;
+        setLocked(false);
+        if (clearValues) {
+            document.getElementById('connStr').value = 'jdbc:sqlserver://192.168.1.100:1433;databaseName=ScadaDB;encrypt=true;trustServerCertificate=true;';
+            document.getElementById('user').value = '';
+            document.getElementById('pass').value = '';
+            showMsg('connMsg', 'Enter new connection details above.', true);
+        }
+    }
+
+    function resetToNow() {
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        const timeStr = now.toTimeString().slice(0, 5);
+        document.querySelector('[name="fromDate"]').value = dateStr;
+        document.querySelector('[name="toDate"]').value = dateStr;
+        document.querySelector('[name="fromTime"]').value = '00:00';
+        document.querySelector('[name="toTime"]').value = timeStr;
+        document.querySelector('[name="area"]').selectedIndex = 0;
+    }
+
+    function showMsg(id, text, isOk) {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.className = 'msg ' + (isOk ? 'ok' : 'err');
+    }
+
+    async function connectDb() {
+        showMsg('connMsg', 'Connecting...', true);
+        const effective = buildEffectiveConnection();
+        const res = await fetch('/api/db/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(effective)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            setLocked(false);
+            showMsg('connMsg', data.message || 'Connection failed. Edit details and retry.', false);
+            return;
+        }
+        connected = true;
+        setLocked(true);
+        showMsg('connMsg', data.message, true);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => resetToNow());
+</script>
+</body>
+</html>
